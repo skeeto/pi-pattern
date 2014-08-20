@@ -144,8 +144,8 @@ void index_search(struct index *index, const char *pattern)
 void print_usage(const char *name, int ret)
 {
     printf("Usage: %s [OPTION] [PATTERN]\n", name);
-    printf("  -i <digits file>     UTF-8 pi digit listing\n");
-    printf("  -d <index file>      SQLite database filename\n");
+    printf("  -i <digits file>     UTF-8 pi digit listing (pi-billion.txt)\n");
+    printf("  -d <index file>      SQLite database filename (pi.sqlite)\n");
     printf("  -n <length>          Maximum pattern length (larger index)\n");
     printf("  -q                   Don't print indexing progress\n");
     printf("  -h                   Print this message and exit\n");
