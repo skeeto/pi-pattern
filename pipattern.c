@@ -25,7 +25,8 @@ static const char *SQL_DELETE =
 static const char *SQL_COUNT =
     "SELECT count(position) FROM digits";
 static const char *SQL_CREATE =
-    "CREATE TABLE IF NOT EXISTS digits (position INTEGER, sequence TEXT)";
+    "CREATE TABLE IF NOT EXISTS digits"
+    "(position INTEGER PRIMARY KEY, sequence TEXT NOT NULL)";
 static const char *SQL_INDEX =
     "CREATE INDEX sequence_index ON digits (sequence, position)";
 static const char *SQL_INSERT =
@@ -43,6 +44,7 @@ void index_open(struct index *index, const char *file)
     X(sqlite3_open(file, &index->db));
     X(sqlite3_exec(index->db, SQL_BUSY, NULL, NULL, NULL));
     X(sqlite3_exec(index->db, SQL_CREATE, NULL, NULL, NULL));
+    X(sqlite3_exec(index->db, "PRAGMA page_size = 65536", NULL, NULL, NULL));
     X(sqlite3_prepare_v2(index->db, SQL_COUNT, -1, &index->count, NULL));
     X(sqlite3_prepare_v2(index->db, SQL_INSERT, -1, &index->insert, NULL));
     X(sqlite3_prepare_v2(index->db, SQL_SEARCH, -1, &index->search, NULL));
@@ -95,6 +97,7 @@ void index_load(struct index *index, const char *name, int max, bool quiet)
     }
 
     /* Walk pi */
+    X(sqlite3_exec(index->db, "PRAGMA journal_mode = OFF", NULL, NULL, NULL));
     index_exec(index->begin);
     if (!quiet) fprintf(stderr, "Loading data ...\n");
     for (int64_t position = 1; buffer[0]; position++) {
