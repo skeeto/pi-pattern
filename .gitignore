@@ -1,0 +1,6 @@
+*.o
+*.sqlite
+*-journal
+*.txt
+*.xz
+pipattern
