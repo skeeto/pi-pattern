@@ -20,6 +20,8 @@ void print_usage(const char *name, int ret)
 
 int main(int argc, char **argv)
 {
+    setlocale(LC_NUMERIC, "");
+
     /* Options */
     bool quiet = false;
     bool use_index = true;
@@ -28,7 +30,6 @@ int main(int argc, char **argv)
     const char *indexfile = "pi.sqlite";
 
     /* Parse options */
-    setlocale(LC_NUMERIC, "");
     int opt;
     while ((opt = getopt(argc, argv, "d:i:n:qhf")) != -1) {
         switch (opt) {
@@ -69,5 +70,4 @@ int main(int argc, char **argv)
             flat_search(datafile, argv[i]);
     }
     return 0;
-
 }
