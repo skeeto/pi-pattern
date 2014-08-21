@@ -169,10 +169,7 @@ void flat_search(const char *file, const char *needle)
     unsigned char haystack[hlength + 1];
     haystack[hlength] = '\0';
     if (fread(haystack, hlength, 1, pi) != 1) {
-        if (feof(pi)) { // input too short!
-            fclose(pi);
-            return;
-        } else {
+        if (ferror(pi)) {
             perror(file);
             exit(EXIT_FAILURE);
         }
@@ -195,7 +192,10 @@ void flat_search(const char *file, const char *needle)
         }
     }
 
-    fclose(pi);
+    if (fclose(pi) != 0) {
+        perror(file);
+        exit(EXIT_FAILURE);
+    }
 }
 
 void print_usage(const char *name, int ret)
