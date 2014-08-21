@@ -10,7 +10,7 @@ as the one listed here (pi-billion.txt):
 
 ## Usage
 
-    $ ./pipattern 123456
+    $ ./pipattern 12345678
     186557266: 1234567805029135
     295024271: 1234567855807249
     328286393: 1234567869790828
