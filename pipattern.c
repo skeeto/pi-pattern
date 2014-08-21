@@ -144,12 +144,67 @@ void index_search(struct index *index, const char *pattern)
     X(sqlite3_reset(index->search));
 }
 
+/* Boyer-Moore-Horspool search */
+void flat_search(const char *file, const char *needle)
+{
+    FILE *pi = fopen(file, "r");
+    if (pi == NULL) {
+        perror(file);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Initialize data structures */
+    size_t length = strlen(needle);
+    unsigned char pattern[length];
+    memcpy(pattern, needle, length);
+    size_t bad_char_skip[256];
+    for (size_t i = 0; i < 256; i++)
+        bad_char_skip[i] = length;
+    size_t last = length - 1;
+    for (size_t i = 0; i < last; i++)
+        bad_char_skip[pattern[i]] = last - i;
+
+    /* Initialize haystack */
+    size_t hlength = length + 8; // context
+    unsigned char haystack[hlength + 1];
+    haystack[hlength] = '\0';
+    if (fread(haystack, hlength, 1, pi) != 1) {
+        if (feof(pi)) { // input too short!
+            fclose(pi);
+            return;
+        } else {
+            perror(file);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    /* Perform search on stream */
+    size_t position = 0;
+    while (!feof(pi)) {
+        for (size_t i = last; haystack[i] == pattern[i]; i--)
+            if (i == 0)
+                printf("%" PRIu64 ": %s\n", position - 1, haystack);
+        size_t skip = bad_char_skip[haystack[last]];
+        position += skip;
+        memmove(haystack, haystack + skip, hlength - skip);
+        if (fread(haystack + hlength - skip, skip, 1, pi) != 1) {
+            if (ferror(pi))  {
+                perror(file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    fclose(pi);
+}
+
 void print_usage(const char *name, int ret)
 {
     printf("Usage: %s [OPTION] [PATTERN]\n", name);
     printf("  -i <digits file>     UTF-8 pi digit listing (pi-billion.txt)\n");
     printf("  -d <index file>      SQLite database filename (pi.sqlite)\n");
     printf("  -n <length>          Maximum pattern length (larger index)\n");
+    printf("  -f                   Do a straight string search (no index)\n");
     printf("  -q                   Don't print indexing progress\n");
     printf("  -h                   Print this message and exit\n");
     exit(ret);
@@ -159,6 +214,7 @@ int main(int argc, char **argv)
 {
     /* Options */
     bool quiet = false;
+    bool use_index = true;
     int max_length = 16;
     const char *datafile = "pi-billion.txt";
     const char *indexfile = "pi.sqlite";
@@ -166,7 +222,7 @@ int main(int argc, char **argv)
     /* Parse options */
     setlocale(LC_NUMERIC, "");
     int opt;
-    while ((opt = getopt(argc, argv, "d:i:n:qh")) != -1) {
+    while ((opt = getopt(argc, argv, "d:i:n:qhf")) != -1) {
         switch (opt) {
         case 'i':
             datafile = optarg;
@@ -180,6 +236,9 @@ int main(int argc, char **argv)
         case 'q':
             quiet = true;
             break;
+        case 'f':
+            use_index = false;
+            break;
         case 'h':
             print_usage(argv[0], EXIT_SUCCESS);
             break;
@@ -188,12 +247,18 @@ int main(int argc, char **argv)
         }
     }
 
-    struct index index;
-    index_open(&index, indexfile);
-    if (index_count(&index) == 0)
-        index_load(&index, datafile, max_length, quiet);
-    for (int i = optind; i < argc; i++)
-        index_search(&index, argv[i]);
-    index_close(&index);
+    if (use_index) {
+        struct index index;
+        index_open(&index, indexfile);
+        if (index_count(&index) == 0)
+            index_load(&index, datafile, max_length, quiet);
+        for (int i = optind; i < argc; i++)
+            index_search(&index, argv[i]);
+        index_close(&index);
+    } else {
+        for (int i = optind; i < argc; i++)
+            flat_search(datafile, argv[i]);
+    }
     return 0;
+
 }
