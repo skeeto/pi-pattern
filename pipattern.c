@@ -6,12 +6,12 @@
 #include <inttypes.h>
 #include <getopt.h>
 #include <locale.h>
-#include <sqlite3.h>
+#include "sqlite3.h"
 
 /* Check return value for errors. */
 inline void X(int r) {
     if (r != SQLITE_OK) {
-        fprintf(stderr, "%s\n", sqlite3_errstr(r));
+        fprintf(stderr, "error: %d: %s\n", __LINE__, sqlite3_errstr(r));
         exit(EXIT_FAILURE);
     }
 }
@@ -21,18 +21,20 @@ const int COMMIT_STEP = 4096 * 256;
 static const char *SQL_BUSY =
     "PRAGMA busy_timeout = 10000";
 static const char *SQL_DELETE =
-    "DELETE FROM digits";
+    "DELETE FROM patterns";
 static const char *SQL_COUNT =
-    "SELECT count(position) FROM digits";
+    "SELECT count(position) FROM patterns";
 static const char *SQL_CREATE =
-    "CREATE TABLE IF NOT EXISTS digits"
-    "(position INTEGER PRIMARY KEY, sequence TEXT NOT NULL)";
+    "CREATE TABLE IF NOT EXISTS patterns"
+    "(position INTEGER PRIMARY KEY, sequence INTEGER NOT NULL)";
 static const char *SQL_INDEX =
-    "CREATE INDEX sequence_index ON digits (sequence, position)";
+    "CREATE INDEX sequence_index ON patterns (sequence, position)";
 static const char *SQL_INSERT =
-    "INSERT INTO digits (position, sequence) VALUES (?, ?)";
+    "INSERT INTO patterns (position, sequence) VALUES (?, ?)";
 static const char *SQL_SEARCH =
-    "SELECT position, sequence FROM digits WHERE sequence LIKE ?";
+    "SELECT position, sequence FROM patterns "
+    "WHERE sequence BETWEEN ? AND ? "
+    "ORDER BY position";
 
 struct index {
     sqlite3 *db;
@@ -111,8 +113,9 @@ void index_load(struct index *index, const char *name, int max, bool quiet)
         memmove(buffer, buffer + 1, max - 1);
         int c = getc(pi);
         buffer[max - 1] = c == EOF ? '\0' : c;
+        int64_t svalue = strtoll(buffer, NULL, 10);
         X(sqlite3_bind_int64(index->insert, 1, position));
-        X(sqlite3_bind_text(index->insert, 2, buffer, -1, SQLITE_TRANSIENT));
+        X(sqlite3_bind_int64(index->insert, 2, svalue));
         index_exec(index->insert);
     }
     if (!quiet)
@@ -130,16 +133,18 @@ void index_load(struct index *index, const char *name, int max, bool quiet)
 
 void index_search(struct index *index, const char *pattern)
 {
-    size_t length = strlen(pattern);
-    char glob[length + 2];
-    strcpy(glob, pattern);
-    glob[length + 0] = '%';
-    glob[length + 1] = '\0';
-    X(sqlite3_bind_text(index->search, 1, glob, -1, SQLITE_STATIC));
+    int pad = 16 - strlen(pattern);
+    int64_t smin = strtoll(pattern, NULL, 10), smax = smin + 1;
+    for (int i = 0; i < pad; i++) {
+        smin *= 10;
+        smax *= 10;
+    }
+    X(sqlite3_bind_int64(index->search, 1, smin));
+    X(sqlite3_bind_int64(index->search, 2, smax - 1));
     while (sqlite3_step(index->search) == SQLITE_ROW) {
-        int64_t p = sqlite3_column_int64(index->search, 0);
-        const unsigned char *s = sqlite3_column_text(index->search, 1);
-        printf("%" PRIu64 ": %s\n", p, s);
+        int64_t pos   = sqlite3_column_int64(index->search, 0);
+        int64_t value = sqlite3_column_int64(index->search, 1);
+        printf("%" PRIu64 ": %016ld\n", pos, value);
     }
     X(sqlite3_reset(index->search));
 }
