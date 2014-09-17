@@ -9,7 +9,11 @@
 /* Check return value for errors. */
 inline void X(int r) {
     if (r != SQLITE_OK) {
+        #ifdef sqlite_errstr
         fprintf(stderr, "%s\n", sqlite3_errstr(r));
+        #else
+        fprintf(stderr, "error: sqlite3\n");
+        #endif
         exit(EXIT_FAILURE);
     }
 }
