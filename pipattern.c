@@ -98,7 +98,7 @@ int main(int argc, char **argv)
             exit(EXIT_FAILURE);
         }
         for (int i = optind; i < argc; i++) {
-            if (offsetdb_search(&db, argv[i]) != 0) {
+            if (offsetdb_print(&db, argv[i]) != 0) {
                 fprintf(stderr, "error: %s\n", strerror(errno));
                 exit(EXIT_FAILURE);
             }
