@@ -3,16 +3,23 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <locale.h>
+#include <string.h>
+#include <errno.h>
 #include "flat.h"
+#include "offsetdb.h"
 #include "sqlite_index.h"
+
+enum mode { FLAT, OFFSET, SQLITE };
 
 void print_usage(const char *name, int ret)
 {
     printf("Usage: %s [OPTION] [PATTERN]\n", name);
     printf("  -i <digits file>     UTF-8 pi digit listing (pi-billion.txt)\n");
-    printf("  -d <index file>      SQLite database filename (pi.sqlite)\n");
+    printf("  -d <database file>   Database filename\n");
     printf("  -n <length>          Maximum pattern length (larger index)\n");
     printf("  -f                   Do a straight string search (no index)\n");
+    printf("  -b                   Do an offset index search\n");
+    printf("  -s                   Do a SQLite index search\n");
     printf("  -q                   Don't print indexing progress\n");
     printf("  -h                   Print this message and exit\n");
     exit(ret);
@@ -24,14 +31,14 @@ int main(int argc, char **argv)
 
     /* Options */
     bool quiet = false;
-    bool use_index = true;
+    enum mode mode = OFFSET;
     int max_length = 16;
     const char *datafile = "pi-billion.txt";
-    const char *indexfile = "pi.sqlite";
+    const char *indexfile = NULL;
 
     /* Parse options */
     int opt;
-    while ((opt = getopt(argc, argv, "d:i:n:qhf")) != -1) {
+    while ((opt = getopt(argc, argv, "d:i:n:bsqhf")) != -1) {
         switch (opt) {
         case 'i':
             datafile = optarg;
@@ -46,7 +53,13 @@ int main(int argc, char **argv)
             quiet = true;
             break;
         case 'f':
-            use_index = false;
+            mode = FLAT;
+            break;
+        case 'b':
+            mode = OFFSET;
+            break;
+        case 's':
+            mode = SQLITE;
             break;
         case 'h':
             print_usage(argv[0], EXIT_SUCCESS);
@@ -56,8 +69,10 @@ int main(int argc, char **argv)
         }
     }
 
-    if (use_index) {
+    if (mode == SQLITE) {
         struct index index;
+        if (indexfile == NULL)
+            indexfile = "pi.sqlite";
         index_open(&index, indexfile);
         index.quiet = quiet;
         if (index_count(&index) == 0)
@@ -65,7 +80,24 @@ int main(int argc, char **argv)
         for (int i = optind; i < argc; i++)
             index_search(&index, argv[i]);
         index_close(&index);
-    } else {
+    } else if (mode == OFFSET) {
+        if (indexfile == NULL)
+            indexfile = "pi.offsetdb";
+        FILE *test;
+        if ((test = fopen(indexfile, "r")) == NULL) {
+            if (offsetdb_create(indexfile, datafile, 6) != 0) {
+                fprintf(stderr, "error: index failed, %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            fclose(test);
+        }
+        struct offsetdb db;
+        offsetdb_open(&db, indexfile, datafile);
+        for (int i = optind; i < argc; i++)
+            offsetdb_search(&db, argv[i]);
+        offsetdb_close(&db);
+    } else if (mode == FLAT) {
         for (int i = optind; i < argc; i++)
             flat_search(datafile, argv[i]);
     }
