@@ -72,13 +72,15 @@ int offsetdb_create(const char *dbfile, const char *pifile, int psize)
             return ENOMEM;
 
     /* Parse and index digits */
+    fprintf(stderr, "Loading digits ...\n");
     char buffer[psize + 1];
     buffer[psize] = '\0';
-    fread(buffer, psize, 1, pi);
+    if (fread(buffer, psize, 1, pi) != 1)
+        return errno;
     pipos_t pos = 0;
     for (int c = fgetc(pi); c != EOF; c = fgetc(pi), pos++) {
         if (pos % 1000000 == 0)
-            fprintf(stderr, "%u digits loaded\n", pos);
+            fprintf(stderr, "%" PRpipos " digits loaded ...\n", pos);
         memmove(buffer, buffer + 1, psize - 1);
         buffer[psize - 1] = c;
         int pattern = strtol(buffer, NULL, 10);
@@ -111,25 +113,29 @@ int offsetdb_create(const char *dbfile, const char *pifile, int psize)
 
 int offsetdb_open(struct offsetdb *db, const char *file, const char *digits)
 {
-    db->db = fopen(file, "rb");
-    db->pi = fopen(digits, "rb");
+    if ((db->db = fopen(file, "rb")) == NULL)
+        return errno;
+    if ((db->pi = fopen(digits, "rb")) == NULL) {
+        fclose(db->db);
+        return errno;
+    }
     uint64_t psize;
-    fread(&psize, sizeof(psize), 1, db->db);
+    if (fread(&psize, sizeof(psize), 1, db->db) != 1)
+        return errno;
     db->psize = psize;
     return 0;
 }
 
-int offsetdb_close(struct offsetdb *db)
+void offsetdb_close(struct offsetdb *db)
 {
     fclose(db->db);
-    return 0;
 }
 
 /**
  * Returns the start and end file positions for the segment of the
  * database containing the pi offsets for a pattern. If this function
  * returns 1, positions need to be checked for matches (the pattern
- * exceeds the database psize).
+ * exceeds the database psize). In case of error, returns -1;
  */
 static int
 bounds(struct offsetdb *db, const char *p, uint64_t *start, uint64_t *end)
@@ -149,11 +155,15 @@ bounds(struct offsetdb *db, const char *p, uint64_t *start, uint64_t *end)
     uint64_t pend = pstart + range - 1;
     long ostart = (1 + pstart) * sizeof(uint64_t);
     long oend = (1 + pend) * sizeof(uint64_t);
-    fseek(db->db, ostart, SEEK_SET);
-    fread(start, sizeof(*start), 1, db->db);
+    if (fseek(db->db, ostart, SEEK_SET) != 0)
+        return -1;
+    if (fread(start, sizeof(*start), 1, db->db) != 1)
+        return -1;
     if (ostart != oend)
-        fseek(db->db, oend + sizeof(uint64_t), SEEK_SET);
-    fread(end, sizeof(*end), 1, db->db);
+        if (fseek(db->db, oend + sizeof(uint64_t), SEEK_SET) != 0)
+            return -1;
+    if (fread(end, sizeof(*end), 1, db->db) != 1)
+        return -1;
     return length > db->psize;
 }
 
@@ -162,17 +172,23 @@ int offsetdb_search(struct offsetdb *db, const char *pattern)
     size_t length = strlen(pattern);
     uint64_t chunk_start, chunk_end;
     int check = bounds(db, pattern, &chunk_start, &chunk_end);
-    fseek(db->db, chunk_start, SEEK_SET);
+    if (check < 0)
+        return -1;
+    if (fseek(db->db, chunk_start, SEEK_SET) != 0)
+        return errno;
     size_t context_size = length * 2 < 8 ? 8 : length * 2;
     for (uint64_t i = chunk_start; i < chunk_end; i += sizeof(pipos_t)) {
         pipos_t pos;
-        fread(&pos, sizeof(pos), 1, db->db);
+        if (fread(&pos, sizeof(pos), 1, db->db) != 1)
+            return errno;
         char context[context_size + 1];
-        fseek(db->pi, pos + 1, SEEK_SET);
-        fread(&context, 1, context_size, db->pi);
+        if (fseek(db->pi, pos + 1, SEEK_SET) != 0)
+            return errno;
+        if (fread(&context, 1, context_size, db->pi) != context_size)
+            return errno;
         context[context_size] = '\0';
         if (!check || memcmp(pattern, context, length) == 0)
-            printf("%u: %s\n", pos, context);
+            printf("%" PRpipos ": %s\n", pos, context);
     }
     return 0;
 }

@@ -93,9 +93,16 @@ int main(int argc, char **argv)
             fclose(test);
         }
         struct offsetdb db;
-        offsetdb_open(&db, indexfile, datafile);
-        for (int i = optind; i < argc; i++)
-            offsetdb_search(&db, argv[i]);
+        if (offsetdb_open(&db, indexfile, datafile) != 0) {
+            fprintf(stderr, "error: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+        for (int i = optind; i < argc; i++) {
+            if (offsetdb_search(&db, argv[i]) != 0) {
+                fprintf(stderr, "error: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        }
         offsetdb_close(&db);
     } else if (mode == FLAT) {
         for (int i = optind; i < argc; i++)
