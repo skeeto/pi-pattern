@@ -125,22 +125,54 @@ int offsetdb_close(struct offsetdb *db)
     return 0;
 }
 
+/**
+ * Returns the start and end file positions for the segment of the
+ * database containing the pi offsets for a pattern. If this function
+ * returns 1, positions need to be checked for matches (the pattern
+ * exceeds the database psize).
+ */
+static int
+bounds(struct offsetdb *db, const char *p, uint64_t *start, uint64_t *end)
+{
+    size_t length = strlen(p);
+    uint64_t range = pow10(db->psize - length);
+    uint64_t value;
+    if (length <= db->psize) {
+        value = strtol(p, NULL, 10);
+    } else {
+        char copy[db->psize + 1];
+        memcpy(copy, p, db->psize);
+        copy[db->psize] = '\0';
+        value = strtol(copy, NULL, 10);
+    }
+    uint64_t pstart = value * range;
+    uint64_t pend = pstart + range - 1;
+    long ostart = (1 + pstart) * sizeof(uint64_t);
+    long oend = (1 + pend) * sizeof(uint64_t);
+    fseek(db->db, ostart, SEEK_SET);
+    fread(start, sizeof(*start), 1, db->db);
+    if (ostart != oend)
+        fseek(db->db, oend + sizeof(uint64_t), SEEK_SET);
+    fread(end, sizeof(*end), 1, db->db);
+    return length > db->psize;
+}
+
 int offsetdb_search(struct offsetdb *db, const char *pattern)
 {
-    size_t offset = (1 + strtol(pattern, NULL, 10)) * sizeof(uint64_t);
-    fseek(db->db, offset, SEEK_SET);
+    size_t length = strlen(pattern);
     uint64_t chunk_start, chunk_end;
-    fread(&chunk_start, sizeof(chunk_start), 1, db->db);
-    fread(&chunk_end, sizeof(chunk_end), 1, db->db);
+    int check = bounds(db, pattern, &chunk_start, &chunk_end);
     fseek(db->db, chunk_start, SEEK_SET);
+    size_t context_size = length * 2 < 8 ? 8 : length * 2;
     for (uint64_t i = chunk_start; i < chunk_end; i += sizeof(pipos_t)) {
         pipos_t pos;
         fread(&pos, sizeof(pos), 1, db->db);
-        char context[17];
+        char context[context_size + 1];
         fseek(db->pi, pos + 1, SEEK_SET);
-        fread(&context, 1, sizeof(context) - 1, db->pi);
-        context[sizeof(context) - 1] = '\0';
-        printf("%u: %s\n", pos, context);
+        fread(&context, 1, context_size, db->pi);
+        context[context_size] = '\0';
+        if (!check || memcmp(pattern, context, length) == 0)
+            printf("%u: %s\n", pos, context);
     }
     return 0;
 }
