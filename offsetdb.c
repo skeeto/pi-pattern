@@ -55,6 +55,11 @@ static inline uint64_t pow10(int p)
     return x;
 }
 
+static inline void report(pipos_t n)
+{
+    fprintf(stderr, "%" PRpipos " digits loaded ...\n", n);
+}
+
 int offsetdb_create(const char *dbfile, const char *pifile, int psize)
 {
     FILE *pi = fopen(pifile, "rb");
@@ -83,16 +88,18 @@ int offsetdb_create(const char *dbfile, const char *pifile, int psize)
     pipos_t pos = 0;
     for (int c = fgetc(pi); c != EOF; c = fgetc(pi), pos++) {
         if (pos % 1000000 == 0)
-            fprintf(stderr, "%" PRpipos " digits loaded ...\n", pos);
+            report(pos);
         memmove(buffer, buffer + 1, psize - 1);
         buffer[psize - 1] = c;
         int pattern = strtol(buffer, NULL, 10);
         if (pstack_push(stacks + pattern, pos) != 0)
             return ENOMEM;
     }
+    report(pos);
     fclose(pi);
 
     /* Write index */
+    fprintf(stderr, "Writing index ...\n");
     uint64_t sum = (2 + nchunks) * sizeof(uint64_t);
     for (size_t c = 0; c < nchunks; c++) {
         if (fwrite(&sum, sizeof(sum), 1, out) != 1)
@@ -103,6 +110,7 @@ int offsetdb_create(const char *dbfile, const char *pifile, int psize)
         return errno;
 
     /* Write pointers */
+    fprintf(stderr, "Writing tables ...\n");
     for (size_t c = 0; c < nchunks; c++) {
         size_t size = stacks[c].fill;
         if (fwrite(stacks[c].ptrs, sizeof(pipos_t), size, out) != size)
@@ -111,6 +119,7 @@ int offsetdb_create(const char *dbfile, const char *pifile, int psize)
     }
 
     free(stacks);
+    fprintf(stderr, "Done.\n");
     return fclose(out);
 }
 
