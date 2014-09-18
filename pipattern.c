@@ -59,7 +59,7 @@ int main(int argc, char **argv)
             indexfile = "pi.offsetdb";
         FILE *test;
         if ((test = fopen(indexfile, "r")) == NULL) {
-            if (offsetdb_create(indexfile, datafile, 7) != 0) {
+            if (offsetdb_create(indexfile, datafile, 6) != 0) {
                 fprintf(stderr, "error: index failed, %s\n", strerror(errno));
                 remove(indexfile);
                 exit(EXIT_FAILURE);
